@@ -1,4 +1,4 @@
-const { entity, id, getNormalized, getSchema, getRootData, foreignKey, replace } = require('./symbols')
+const { entity, id, getNormalized, getSchema, getRootData, foreignKey, replace, replaceMany } = require('../src/symbols')
 const processState = require('../src/proxy')
 
 
@@ -276,6 +276,34 @@ describe('the proxied state', () => {
             name: 'Bill',
             age: 40,
             pokemon: [{ name: 'Charmander' }]
+        })
+    })
+
+    it('performs updates on multiple entities', () => {
+        const state = {
+            [entity]: 'Trainer',
+            name: 'Bill',
+            age: 27,
+            pokemon: [
+                { [entity]: 'Pokemon', name: 'Pikachu', level: 2 },
+                { [entity]: 'Pokemon', name: 'Charmander', level: 7 },
+                { [entity]: 'Pokemon', name: 'Meowth', level: 3 }
+            ]
+        }
+        const proxied = processState(state)
+        const newState = proxied[replaceMany](
+            'Pokemon',
+            (p) => p.level < 5,
+            p => ({ ...p, name: p.name.toUpperCase() })
+        )
+        expect(newState).toEqual({
+            name: 'Bill',
+            age: 27,
+            pokemon: [
+                { name: 'PIKACHU', level: 2 },
+                { name: 'Charmander', level: 7 },
+                { name: 'MEOWTH', level: 3 }
+            ]
         })
     })
 })

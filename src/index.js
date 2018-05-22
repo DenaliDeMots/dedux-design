@@ -3,7 +3,7 @@ const updateAtPath = require('./functions/updateAtPath');
 const findPath = require('./functions/findPath');
 const processState = require('./proxy')
 const checkForEntities = require('./functions/checkForEntities')
-const { replace } = require('./symbols')
+const { replace, replaceMany } = require('./symbols')
 const getPath = (path, state) => {
   const paths = findPath(path, state);
   if (paths.length === 0) throw new Error('Path not found.');
@@ -540,37 +540,48 @@ class Container {
   constructor() {
     this.closedState = {};
     this.deduce = (reducer) => {
-      const initialState = reducer(undefined, {})
+      let initialState = reducer(undefined, {})
       const shouldNormalize = checkForEntities(initialState)
-      let proxied = shouldNormalize && processState(initialState)
-      return (state, action) => {
+      if (shouldNormalize) initialState = processState(initialState)
+      return (state = initialState, action) => {
         let update = reducer(state, action);
-        proxied = shouldNormalize ? proxied[replace](update) : update
-        this.closedState.state = proxied;
-        if (proxied !== state) return proxied;
-        if (typeof state === 'number') {
-          this.closedState.state = switch_number(state, action)
-          return this.closedState.state;
-        }
-        if (typeof state === 'boolean') {
-          this.closedState.state = switch_boolean(state, action);
-          return this.closedState.state;
-        }
-        if (typeof state === 'string') {
-          this.closedState.state = switch_string(state, action);
-          return this.closedState.state;
-        }
-        if (Array.isArray(state)) {
-          this.closedState.state = switch_array(state, action);
-          return this.closedState.state;
-        }
-        if (typeof state === 'object') {
-          this.closedState.state = switch_object(state, action);
-          return this.closedState.state;
+        if (shouldNormalize) update = state[replace](update)
+        this.closedState.state = update;
+        if (update !== state) return update;
+        if (action.from) {
+          if (!shouldNormalize) throw new Error('You must use entity tags in your state in order to select entities')
+          return update[replaceMany](action.from, action.where, (e) => this.deducer(e, action))
+        } else {
+          const nextState = this.deducer(state, action)
+          return shouldNormalize ? update[replace](nextState) : nextState
         }
       }
     };
     this.actions = new Actions(this.closedState);
+  }
+
+  deducer(state, action) {
+    if (typeof state === 'number') {
+      this.closedState.state = switch_number(state, action)
+      return this.closedState.state;
+    }
+    if (typeof state === 'boolean') {
+      this.closedState.state = switch_boolean(state, action);
+      return this.closedState.state;
+    }
+    if (typeof state === 'string') {
+      this.closedState.state = switch_string(state, action);
+      return this.closedState.state;
+    }
+    if (Array.isArray(state)) {
+      this.closedState.state = switch_array(state, action);
+      return this.closedState.state;
+    }
+    if (typeof state === 'object') {
+      this.closedState.state = switch_object(state, action);
+      return this.closedState.state;
+    }
+    return state
   }
 }
 
@@ -579,3 +590,37 @@ module.exports = {
   deduce: container.deduce,
   D: container.actions
 };
+
+
+
+///TESTING
+// const { entity } = require('./symbols')
+// const initialState = {
+//   [entity]: 'Trainer',
+//   name: 'Bill',
+//   age: 27,
+//   pokemon: [
+//     { [entity]: 'Pokemon', name: 'Pikachu', level: 2 },
+//     { [entity]: 'Pokemon', name: 'Charmander', level: 7 },
+//     { [entity]: 'Pokemon', name: 'Meowth', level: 3 }
+//   ]
+// }
+
+// let reducer = (state = initialState, action) => {
+//   switch (action.type) {
+//     default:
+//       return state;
+//   }
+// };
+
+// reducer = container.deduce(reducer)
+// const firstState = reducer(undefined, {})
+// const secondState = reducer(firstState,
+//   {
+//     type: 'INCREMENT_IN',
+//     from: 'Pokemon',
+//     value: 1,
+//     key: 'level'
+//   }
+// )
+// console.log('The next state is ', secondState)
